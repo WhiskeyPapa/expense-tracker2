@@ -172,13 +172,13 @@
   .total-card .amt { font-size: 32px; font-weight: 500; letter-spacing: -0.5px; }
 
   .add-section-lbl {
-    padding: 0 18px 6px;
+    padding: 0 18px 0px;
     font-size: 12px; font-weight: 500;
     color: rgba(255,255,255,0.3);
     letter-spacing: 0.05em; text-transform: uppercase;
   }
   .amount-display {
-    text-align: center; padding: 10px 18px 10px;
+    text-align: center; padding: 4px 18px 4px;
   }
   .amount-display .num { font-size: 40px; font-weight: 500; letter-spacing: -1px; }
   .amt-row { display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -244,7 +244,7 @@
   }
   .np-btn {
     background: var(--bg3); border-radius: 10px;
-    padding: 12px 7px; font-size: 16px; font-weight: 500;
+    padding: 19px 7px; font-size: 16px; font-weight: 500;
     color: var(--text); border: none; cursor: pointer;
     text-align: center; transition: background 0.1s;
   }
@@ -262,7 +262,7 @@
   .add-btn:active { opacity: 0.8; }
   .expr-display {
     font-size: 13px; color: var(--muted); text-align: center;
-    min-height: 18px; letter-spacing: 0.02em; padding: 0 18px;
+    min-height: 6px; letter-spacing: 0.02em; padding: 0 18px;
   }
 
   .divider { margin: 0 18px; height: 0.5px; background: var(--border); }
@@ -1358,16 +1358,14 @@ function renderTx(highlightId) {
       txScreen.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
 
       // Step 4: outline flash
+      row.style.transition = 'box-shadow 0.15s';
+      row.style.boxShadow = 'inset 0 0 0 2px rgba(72,72,238,0.9)';
       setTimeout(() => {
-        row.style.transition = 'box-shadow 0.15s';
-        row.style.boxShadow = 'inset 0 0 0 2px rgba(72,72,238,0.9)';
-        setTimeout(() => {
-          row.style.transition = 'box-shadow 1s';
-          row.style.boxShadow = 'none';
-          // Step 5: after outline fades, re-render to restore delete button
-          setTimeout(() => { row.style.boxShadow = ''; row.style.transition = ''; renderTx(); }, 1100);
-        }, 2000);
-      }, 100);
+        row.style.transition = 'box-shadow 1s';
+        row.style.boxShadow = 'none';
+        // Step 5: after outline fades, re-render to restore delete button
+        setTimeout(() => { row.style.boxShadow = ''; row.style.transition = ''; renderTx(); }, 1100);
+      }, 2000);
     }, 300);
   }
 }
