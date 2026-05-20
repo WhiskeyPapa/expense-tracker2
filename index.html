@@ -698,7 +698,7 @@ let expenses   = [];
 let amtExpr    = '';
 let selectedDate = new Date();
 let selCat     = null;
-let txFilter   = 'all';
+let txFilters  = new Set();
 let txSearch   = '';
 let dateFrom   = null;
 let dateTo     = null;
@@ -773,14 +773,19 @@ const chipsEl = document.getElementById('tx-chips');
   chip.style.color = c.id==='all' ? '#4848ee' : c.color;
   if (c.id==='all') { chip.style.borderColor = '#4848ee'; }
   chip.innerHTML = `<i class="ti ${c.icon}"></i>${c.label}`;
-  chip.onclick = () => { txFilter = c.id; renderTx(); updateChips(); };
+  chip.onclick = () => {
+    if (c.id === 'all') { txFilters.clear(); }
+    else { txFilters.has(c.id) ? txFilters.delete(c.id) : txFilters.add(c.id); }
+    renderTx(); updateChips();
+  };
   chipsEl.appendChild(chip);
 });
 
 function updateChips() {
   document.querySelectorAll('#tx-chips .chip').forEach(ch => {
-    const isActive = ch.dataset.id === txFilter;
-    const c = ch.dataset.id === 'all' ? {color:'#4848ee'} : (CAT_MAP[ch.dataset.id]||{color:'#888'});
+    const isAll    = ch.dataset.id === 'all';
+    const isActive = isAll ? txFilters.size === 0 : txFilters.has(ch.dataset.id);
+    const c = isAll ? {color:'#4848ee'} : (CAT_MAP[ch.dataset.id]||{color:'#888'});
     ch.style.borderColor = isActive ? c.color : 'transparent';
   });
 }
@@ -1246,7 +1251,7 @@ function renderOverview() {
 
 // ── TRANSACTIONS ──
 function renderTx(highlightId) {
-  let filtered = txFilter==='all' ? expenses : expenses.filter(e=>e.category===txFilter);
+  let filtered = txFilters.size === 0 ? expenses : expenses.filter(e => txFilters.has(e.category));
   if (txSearch) {
     filtered = filtered.filter(e => {
       const noteMatch = e.note && e.note.toLowerCase().includes(txSearch);
@@ -1506,7 +1511,7 @@ window.jumpToTransaction = (id) => {
   document.getElementById('s-transactions').classList.add('active');
   document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('on'));
   document.querySelectorAll('.bnav-btn')[1].classList.add('on');
-  txFilter = 'all';
+  txFilters.clear();
   updateChips();
   renderTx(id);
 };
