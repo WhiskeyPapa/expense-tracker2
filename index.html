@@ -1366,8 +1366,8 @@ function renderTx(highlightId) {
           row.style.boxShadow = 'none';
           // Step 5: after outline fades, re-render to restore delete button
           setTimeout(() => { row.style.boxShadow = ''; row.style.transition = ''; renderTx(); }, 1100);
-        }, 1000);
-      }, 400);
+        }, 2000);
+      }, 100);
     }, 300);
   }
 }
