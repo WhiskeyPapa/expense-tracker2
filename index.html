@@ -168,8 +168,19 @@
     padding: 20px;
     text-align: center;
   }
-  .total-card .lbl { font-size: 11px; color: rgba(255,255,255,0.45); letter-spacing: 0.05em; margin-bottom: 8px; }
+  .total-card .lbl { font-size: 11px; color: rgba(255,255,255,0.45); letter-spacing: 0.05em; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; }
   .total-card .amt { font-size: 32px; font-weight: 500; letter-spacing: -0.5px; }
+  .budget-edit-btn { background: none; border: none; color: rgba(255,255,255,0.45); cursor: pointer; padding: 2px; display: flex; align-items: center; touch-action: manipulation; }
+  .budget-edit-btn i { font-size: 13px; }
+  .budget-bar-wrap { margin-top: 14px; }
+  .budget-bar-track { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .budget-bar-fill { height: 100%; border-radius: 3px; transition: width 0.2s; }
+  .budget-bar-txt { font-size: 11px; color: var(--muted); margin-top: 7px; display: flex; justify-content: space-between; }
+  .budget-cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .budget-cat-row .bc-ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .budget-cat-row .bc-lbl { flex: 1; font-size: 13px; color: #ccc; }
+  .budget-cat-row input { width: 100px; background: var(--bg3); border: none; border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 13px; text-align: right; outline: none; }
+  .budget-cat-row input::placeholder { color: var(--muted); }
 
   .add-section-lbl {
     padding: 0 18px 2px;
@@ -384,7 +395,7 @@
   .badge.flat { background: rgba(255,255,255,0.08); color: var(--muted); }
 
   .sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 18px 18px; }
-  .sum-card { background: var(--bg2); border-radius: 16px; padding: 14px 16px; }
+  .sum-card { background: var(--bg2); border-radius: 16px; padding: 14px 16px; min-height: 90px; display: flex; flex-direction: column; justify-content: center; }
   .sum-card .s-lbl { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
   .sum-card .s-val { font-size: 18px; font-weight: 500; }
 
@@ -477,8 +488,9 @@
 <!-- ══════════ OVERVIEW ══════════ -->
 <div class="screen active" id="s-overview">
   <div class="total-card">
-    <div class="lbl">TOTAL SPENT THIS MONTH</div>
+    <div class="lbl">TOTAL SPENT THIS MONTH<button class="budget-edit-btn" onclick="openBudgetEditor()" aria-label="Set budget"><i class="ti ti-settings" aria-hidden="true"></i></button></div>
     <div class="amt" id="ov-total">NT$0</div>
+    <div id="ov-budget-bar"></div>
   </div>
 
   <div class="add-section-lbl">Add expense</div>
@@ -588,7 +600,7 @@
     <div class="search-row" style="margin-bottom:0;padding-bottom:0;">
       <div class="search-bar-inner">
         <i class="ti ti-search" aria-hidden="true"></i>
-        <input id="tx-search" type="search" placeholder="Search by note or amount..." autocomplete="off" autocorrect="off" spellcheck="false">
+        <input id="tx-search" type="search" placeholder="Search by note or amount..." autocomplete="off" autocorrect="on" spellcheck="true">
       </div>
       <button class="cal-icon-btn" id="cal-icon-btn" onclick="toggleDateRange()" aria-label="Filter by date">
         <i class="ti ti-calendar" aria-hidden="true"></i>
@@ -639,7 +651,7 @@
 <!-- ══════════ FIREBASE + APP LOGIC ══════════ -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, deleteDoc, updateDoc, doc, onSnapshot, query }
+import { getFirestore, collection, addDoc, deleteDoc, updateDoc, setDoc, doc, onSnapshot, query }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -725,6 +737,7 @@ let rptDate    = new Date();
 rptDate.setDate(1);
 let ovPieChart = null;
 let rptLineChart = null;
+let budgetConfig = { overall: null, categories: {} };
 Chart.register(ChartDataLabels);
 
 // ── BUILD CATEGORY GRID ──
@@ -1213,12 +1226,35 @@ onSnapshot(q, snap => {
   if (!recurringProcessed) { recurringProcessed = true; processRecurring(); }
 });
 
+// ── BUDGET LISTENER ──
+const budgetDocRef = doc(db,'settings','budget');
+onSnapshot(budgetDocRef, snap => {
+  const data = snap.data() || {};
+  budgetConfig = { overall: data.overall ?? null, categories: data.categories || {} };
+  renderOverview();
+  renderReports();
+});
+
 // ── OVERVIEW ──
 function renderOverview() {
   const now = new Date();
   const monthly = expenses.filter(e => e.date.getMonth()===now.getMonth() && e.date.getFullYear()===now.getFullYear());
   const total = monthly.reduce((s,e)=>s+e.amount,0);
   document.getElementById('ov-total').textContent = 'NT$'+total.toLocaleString();
+
+  const budgetBarEl = document.getElementById('ov-budget-bar');
+  if (budgetConfig.overall) {
+    const pct = Math.min(100, Math.round(total / budgetConfig.overall * 100));
+    const over = total > budgetConfig.overall;
+    const color = over ? '#ff6b6b' : pct >= 80 ? '#facc15' : '#4cd97b';
+    budgetBarEl.innerHTML = `
+      <div class="budget-bar-wrap">
+        <div class="budget-bar-track"><div class="budget-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+        <div class="budget-bar-txt"><span>${Math.round(total/budgetConfig.overall*100)}% of NT$${budgetConfig.overall.toLocaleString()}</span><span>${over?'Over by NT$'+(total-budgetConfig.overall).toLocaleString():'NT$'+(budgetConfig.overall-total).toLocaleString()+' left'}</span></div>
+      </div>`;
+  } else {
+    budgetBarEl.innerHTML = '';
+  }
 
   const totals = {};
   monthly.forEach(e => { totals[e.category] = (totals[e.category]||0) + e.amount; });
@@ -1260,7 +1296,8 @@ function renderTx(highlightId) {
         e.originalCurrency.toLowerCase().includes(txSearch) ||
         (e.originalAmount || '').toString().includes(txSearch)
       );
-      return noteMatch || amtMatch || fxMatch;
+      const recurMatch = e.recurring && e.recurring.toLowerCase().includes(txSearch);
+      return noteMatch || amtMatch || fxMatch || recurMatch;
     });
   }
   if (dateFrom || dateTo) {
@@ -1401,12 +1438,12 @@ function renderReports() {
   document.getElementById('rpt-compare').innerHTML = `
     <div class="compare-row">
       <div class="compare-col">
-        <span class="c-lbl">${MONTHS[prevDate.getMonth()]} ${prevDate.getFullYear()}</span>
+        <span class="c-lbl">LAST MONTH</span>
         <span class="c-val">NT$${prevTotal.toLocaleString()}</span>
       </div>
       <div class="compare-divider"></div>
       <div class="compare-col right">
-        <span class="c-lbl">${MONTHS[m]} ${y}</span>
+        <span class="c-lbl">THIS MONTH</span>
         <span class="c-val">NT$${thisTotal.toLocaleString()}</span>
       </div>
     </div>
@@ -1428,8 +1465,8 @@ function renderReports() {
   document.getElementById('rpt-summary').innerHTML = `
     <div class="sum-card"><div class="s-lbl">Total spent</div><div class="s-val">NT$${thisTotal.toLocaleString()}</div></div>
     <div class="sum-card"><div class="s-lbl">Transactions</div><div class="s-val">${thisMonth.length}</div></div>
-    <div class="sum-card">
-      <div class="s-lbl">Most spent category</div>
+    <div class="sum-card" style="${topCat?'cursor:pointer;border:1px solid rgba(255,255,255,0.12);':''}" onclick="${topCat?`jumpToCategory('${topCat.id}')`:''}" title="${topCat?'Tap to view transactions':''}">
+      <div class="s-lbl">Most spent category ${topCat?'<i class="ti ti-arrow-right" style="font-size:10px;vertical-align:middle;opacity:0.5;"></i>':''}</div>
       ${topCat
         ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
              <i class="ti ${topCat.icon}" style="color:${topCat.color};font-size:15px;" aria-hidden="true"></i>
@@ -1465,9 +1502,13 @@ function renderReports() {
             ? `<span class="chg-down"><i class="ti ti-arrow-down" style="font-size:9px;"></i>${chg}%</span>`
             : `<span class="chg-flat">—</span>`;
       }
-      return `<div>
+      const catBudget = budgetConfig.categories[c.id];
+      const budgetPctHtml = catBudget
+        ? `<span style="font-size:11px;color:${thisTotals[c.id] > catBudget ? '#ff6b6b' : 'var(--muted)'};">&nbsp;(${Math.round(thisTotals[c.id]/catBudget*100)}% of budget spent)</span>`
+        : '';
+      return `<div style="cursor:pointer;" onclick="jumpToCategory('${c.id}')">
         <div class="leg-row">
-          <div class="leg-left"><div class="leg-dot" style="background:${c.color}"></div><span class="leg-name">${c.label}</span></div>
+          <div class="leg-left"><div class="leg-dot" style="background:${c.color}"></div><span class="leg-name">${c.label}${budgetPctHtml}</span></div>
           <div class="leg-right">${chgHtml}<span style="font-size:11px;color:var(--muted);">${pct}%</span><span class="leg-amt">NT$${thisTotals[c.id].toLocaleString()}</span></div>
         </div>
         <div class="cb-track"><div class="cb-fill" style="width:${pct}%;background:${c.color}"></div></div>
@@ -1512,6 +1553,32 @@ window.jumpToTransaction = (id) => {
   txFilters.clear();
   updateChips();
   renderTx(id);
+};
+
+// ── JUMP TO CATEGORY ──
+window.jumpToCategory = (catId) => {
+  // switch to transactions tab, filtered to this category
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('s-transactions').classList.add('active');
+  document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('.bnav-btn')[1].classList.add('on');
+  txFilters.clear();
+  txFilters.add(catId);
+  updateChips();
+
+  // limit date range to the month currently shown in Reports
+  const y = rptDate.getFullYear(), m = rptDate.getMonth();
+  dateFrom = new Date(y, m, 1);
+  dateTo   = new Date(y, m + 1, 0);
+  const fmt = {day:'numeric', month:'short', year:'numeric'};
+  document.getElementById('dr-from-val').textContent = dateFrom.toLocaleDateString('en-US', fmt);
+  document.getElementById('dr-from-val').classList.remove('placeholder');
+  document.getElementById('dr-to-val').textContent = dateTo.toLocaleDateString('en-US', fmt);
+  document.getElementById('dr-to-val').classList.remove('placeholder');
+  document.getElementById('date-range-bar').classList.add('visible');
+  document.getElementById('cal-icon-btn').classList.add('active');
+
+  renderTx();
 };
 
 // ── TAB SWITCH ──
@@ -1914,7 +1981,7 @@ async function processRecurring() {
     const dueDate = new Date(e.nextDue);
     const next = getNextDueDate(dueDate, e.recurring).getTime();
     const payload = { amount: e.amount, category: e.category, note: e.note || '',
-      dateMs: e.nextDue, recurring: e.recurring, nextDue: next };
+      dateMs: e.nextDue, recurring: null, nextDue: null };
     if (e.originalAmount) {
       payload.originalAmount = e.originalAmount;
       payload.originalCurrency = e.originalCurrency;
@@ -1933,6 +2000,39 @@ window.toast = (msg) => {
   t.className = 'toast'; t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(()=>t.remove(), 1800);
+};
+
+// ── BUDGET EDITOR ──
+function renderBudgetCatList() {
+  document.getElementById('budget-cat-list').innerHTML = CATS.map(c => `
+    <div class="budget-cat-row">
+      <div class="bc-ico" style="background:${c.color}22;color:${c.color};"><i class="ti ${c.icon}" aria-hidden="true"></i></div>
+      <div class="bc-lbl">${c.label}</div>
+      <input type="number" inputmode="decimal" min="0" placeholder="0" id="budget-cat-${c.id}" value="${budgetConfig.categories[c.id] || ''}">
+    </div>`).join('');
+}
+window.openBudgetEditor = () => {
+  document.getElementById('budget-overall-input').value = budgetConfig.overall || '';
+  renderBudgetCatList();
+  document.getElementById('budget-sheet').classList.add('visible');
+  document.getElementById('budget-backdrop').classList.add('visible');
+};
+window.closeBudgetEditor = () => {
+  document.getElementById('budget-sheet').classList.remove('visible');
+  document.getElementById('budget-backdrop').classList.remove('visible');
+};
+window.saveBudget = async () => {
+  const overallVal = parseFloat(document.getElementById('budget-overall-input').value);
+  const categories = {};
+  CATS.forEach(c => {
+    const v = parseFloat(document.getElementById('budget-cat-'+c.id).value);
+    if (v > 0) categories[c.id] = v;
+  });
+  try {
+    await setDoc(budgetDocRef, { overall: overallVal > 0 ? overallVal : null, categories }, { merge: false });
+    toast('Budget saved!');
+    closeBudgetEditor();
+  } catch(e) { toast('Error saving budget'); console.error(e); }
 };
 
 // ── SERVICE WORKER ──
@@ -1968,6 +2068,20 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="cal-days" id="cal-days"></div>
   <button class="cal-confirm" id="cal-confirm" onclick="confirmCal()">Confirm</button>
+</div>
+<div class="cal-backdrop" id="budget-backdrop" onclick="closeBudgetEditor()"></div>
+<div class="cur-sheet" id="budget-sheet">
+  <div class="cal-handle"></div>
+  <div style="padding:0 18px 12px;font-size:15px;font-weight:500;color:var(--text);">Set Budget</div>
+  <div style="padding:0 18px;max-height:50vh;overflow-y:auto;">
+    <div class="add-section-lbl" style="padding:0 0 6px;">Overall monthly budget</div>
+    <input class="note-field" style="margin:0 0 16px;width:100%;text-align:left;" type="number" inputmode="decimal" min="0" placeholder="e.g. 50000" id="budget-overall-input">
+    <div class="add-section-lbl" style="padding:0 0 2px;">Per-category budgets (optional)</div>
+    <div id="budget-cat-list"></div>
+  </div>
+  <div style="padding:16px 18px 0;">
+    <button class="cal-confirm" onclick="saveBudget()">Save</button>
+  </div>
 </div>
 </body>
 </html>
