@@ -1326,7 +1326,7 @@ function renderTx(highlightId) {
         e.originalCurrency.toLowerCase().includes(txSearch) ||
         (e.originalAmount || '').toString().includes(txSearch)
       );
-      const recurMatch = e.recurring && e.recurring.toLowerCase().includes(txSearch);
+      const recurMatch = e.recurring && (e.recurring.toLowerCase().includes(txSearch) || 'recurring'.includes(txSearch));
       return noteMatch || amtMatch || fxMatch || recurMatch;
     });
   }
