@@ -395,7 +395,8 @@
   .badge.flat { background: rgba(255,255,255,0.08); color: var(--muted); }
 
   .sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 18px 18px; }
-  .sum-card { background: var(--bg2); border-radius: 16px; padding: 14px 16px; min-height: 90px; display: flex; flex-direction: column; justify-content: center; }
+  .sum-card { background: var(--bg2); border-radius: 16px; padding: 14px 16px; min-height: 90px; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start; text-align: left; }
+  .sum-card-body { margin-top: auto; padding-top: 6px; width: 100%; }
   .sum-card .s-lbl { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
   .sum-card .s-val { font-size: 18px; font-weight: 500; }
 
@@ -737,7 +738,9 @@ let rptDate    = new Date();
 rptDate.setDate(1);
 let ovPieChart = null;
 let rptLineChart = null;
-let budgetConfig = { overall: null, categories: {} };
+let legacyBudgetCategories = {};
+let monthlyBudgets = {};
+let budgetHistory = [];
 Chart.register(ChartDataLabels);
 
 // ── BUILD CATEGORY GRID ──
@@ -1227,12 +1230,38 @@ onSnapshot(q, snap => {
 });
 
 // ── BUDGET LISTENER ──
-const budgetDocRef = doc(db,'settings','budget');
-onSnapshot(budgetDocRef, snap => {
-  const data = snap.data() || {};
-  budgetConfig = { overall: data.overall ?? null, categories: data.categories || {} };
+// Budgets are saved per calendar month ('YYYY-MM'). Setting a new budget only
+// takes effect from that month onward — earlier months keep whatever budget
+// was in effect for them at the time.
+function monthKey(y, m) { return `${y}-${String(m + 1).padStart(2, '0')}`; }
+function rebuildBudgetHistory() {
+  const entries = [
+    { key: '0000-00', categories: legacyBudgetCategories },
+    ...Object.keys(monthlyBudgets).map(k => ({ key: k, categories: monthlyBudgets[k] }))
+  ];
+  entries.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  budgetHistory = entries;
   renderOverview();
   renderReports();
+}
+function getBudgetForMonth(y, m) {
+  const k = monthKey(y, m);
+  let chosen = null;
+  for (const e of budgetHistory) {
+    if (e.key <= k) chosen = e; else break;
+  }
+  const categories = chosen ? chosen.categories : {};
+  const overallSum = Object.values(categories).reduce((s, v) => s + (v || 0), 0);
+  return { overall: overallSum > 0 ? overallSum : null, categories };
+}
+onSnapshot(doc(db,'settings','budget'), snap => {
+  legacyBudgetCategories = (snap.data() || {}).categories || {};
+  rebuildBudgetHistory();
+});
+onSnapshot(query(collection(db,'budgets')), snap => {
+  monthlyBudgets = {};
+  snap.docs.forEach(d => { monthlyBudgets[d.id] = d.data().categories || {}; });
+  rebuildBudgetHistory();
 });
 
 // ── OVERVIEW ──
@@ -1242,6 +1271,7 @@ function renderOverview() {
   const total = monthly.reduce((s,e)=>s+e.amount,0);
   document.getElementById('ov-total').textContent = 'NT$'+total.toLocaleString();
 
+  const budgetConfig = getBudgetForMonth(now.getFullYear(), now.getMonth());
   const budgetBarEl = document.getElementById('ov-budget-bar');
   if (budgetConfig.overall) {
     const pct = Math.min(100, Math.round(total / budgetConfig.overall * 100));
@@ -1417,6 +1447,7 @@ window.rptChangeMonth = (d) => {
 function renderReports() {
   const y = rptDate.getFullYear(), m = rptDate.getMonth();
   document.getElementById('rpt-month-lbl').textContent = `${MONTHS[m]} ${y}`;
+  const budgetConfig = getBudgetForMonth(y, m);
 
   const thisMonth = expenses.filter(e => e.date.getFullYear()===y && e.date.getMonth()===m);
   const prevDate  = new Date(y, m-1, 1);
@@ -1463,22 +1494,31 @@ function renderReports() {
   const topCatAmt = topCatId ? catTotals[topCatId] : 0;
 
   document.getElementById('rpt-summary').innerHTML = `
-    <div class="sum-card"><div class="s-lbl">Total spent</div><div class="s-val">NT$${thisTotal.toLocaleString()}</div></div>
-    <div class="sum-card"><div class="s-lbl">Transactions</div><div class="s-val">${thisMonth.length}</div></div>
+    <div class="sum-card">
+      <div class="s-lbl">Total spent</div>
+      <div class="sum-card-body"><div class="s-val">NT$${thisTotal.toLocaleString()}</div></div>
+    </div>
+    <div class="sum-card">
+      <div class="s-lbl">This month's budget</div>
+      <div class="sum-card-body">${budgetConfig.overall
+        ? `<div class="s-val">NT$${budgetConfig.overall.toLocaleString()}</div>
+           <div style="font-size:11px;color:${thisTotal > budgetConfig.overall ? '#ff6b6b' : 'var(--muted)'};margin-top:4px;">${Math.round(thisTotal/budgetConfig.overall*100)}% spent</div>`
+        : '<div class="s-val">—</div>'}</div>
+    </div>
     <div class="sum-card" style="${topCat?'cursor:pointer;border:1px solid rgba(255,255,255,0.12);':''}" onclick="${topCat?`jumpToCategory('${topCat.id}')`:''}" title="${topCat?'Tap to view transactions':''}">
       <div class="s-lbl">Most spent category ${topCat?'<i class="ti ti-arrow-right" style="font-size:10px;vertical-align:middle;opacity:0.5;"></i>':''}</div>
-      ${topCat
-        ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+      <div class="sum-card-body">${topCat
+        ? `<div style="display:flex;align-items:center;gap:6px;">
              <i class="ti ${topCat.icon}" style="color:${topCat.color};font-size:15px;" aria-hidden="true"></i>
              <span style="font-size:13px;font-weight:500;color:#ccc;">${topCat.label}</span>
              <span style="font-size:11px;color:#7a7a9a;">${thisTotal ? Math.round(topCatAmt/thisTotal*100) : 0}%</span>
            </div>
            <div class="s-val" style="margin-top:6px;">NT$${topCatAmt.toLocaleString()}</div>`
-        : '<div class="s-val">—</div>'}
+        : '<div class="s-val">—</div>'}</div>
     </div>
     <div class="sum-card" style="cursor:pointer;${largestExp?'border:1px solid rgba(255,255,255,0.12);':''}" onclick="${largestExp?`jumpToTransaction('${largestExp.id}')`:''}" title="${largestExp?'Tap to view transaction':''}">
       <div class="s-lbl">Largest expense ${largestExp?'<i class="ti ti-arrow-right" style="font-size:10px;vertical-align:middle;opacity:0.5;"></i>':''}</div>
-      <div class="s-val">NT$${largest.toLocaleString()}</div>
+      <div class="sum-card-body"><div class="s-val">NT$${largest.toLocaleString()}</div></div>
     </div>`;
 
   // E: category breakdown with % change
@@ -2003,16 +2043,25 @@ window.toast = (msg) => {
 };
 
 // ── BUDGET EDITOR ──
+// Editing always sets the budget for the current real calendar month onward —
+// it never rewrites the budget doc of a past month, so history stays intact.
 function renderBudgetCatList() {
+  const now = new Date();
+  const current = getBudgetForMonth(now.getFullYear(), now.getMonth());
   document.getElementById('budget-cat-list').innerHTML = CATS.map(c => `
     <div class="budget-cat-row">
       <div class="bc-ico" style="background:${c.color}22;color:${c.color};"><i class="ti ${c.icon}" aria-hidden="true"></i></div>
       <div class="bc-lbl">${c.label}</div>
-      <input type="number" inputmode="decimal" min="0" placeholder="0" id="budget-cat-${c.id}" value="${budgetConfig.categories[c.id] || ''}">
+      <input type="number" inputmode="decimal" min="0" placeholder="0" id="budget-cat-${c.id}" value="${current.categories[c.id] || ''}" oninput="updateBudgetTotal()">
     </div>`).join('');
+  updateBudgetTotal();
 }
+window.updateBudgetTotal = () => {
+  let sum = 0;
+  CATS.forEach(c => { sum += parseFloat(document.getElementById('budget-cat-'+c.id).value) || 0; });
+  document.getElementById('budget-total-display').textContent = 'NT$'+sum.toLocaleString();
+};
 window.openBudgetEditor = () => {
-  document.getElementById('budget-overall-input').value = budgetConfig.overall || '';
   renderBudgetCatList();
   document.getElementById('budget-sheet').classList.add('visible');
   document.getElementById('budget-backdrop').classList.add('visible');
@@ -2022,14 +2071,14 @@ window.closeBudgetEditor = () => {
   document.getElementById('budget-backdrop').classList.remove('visible');
 };
 window.saveBudget = async () => {
-  const overallVal = parseFloat(document.getElementById('budget-overall-input').value);
   const categories = {};
   CATS.forEach(c => {
     const v = parseFloat(document.getElementById('budget-cat-'+c.id).value);
     if (v > 0) categories[c.id] = v;
   });
   try {
-    await setDoc(budgetDocRef, { overall: overallVal > 0 ? overallVal : null, categories }, { merge: false });
+    const now = new Date();
+    await setDoc(doc(db,'budgets', monthKey(now.getFullYear(), now.getMonth())), { categories }, { merge: false });
     toast('Budget saved!');
     closeBudgetEditor();
   } catch(e) { toast('Error saving budget'); console.error(e); }
@@ -2074,12 +2123,14 @@ if ('serviceWorker' in navigator) {
   <div class="cal-handle"></div>
   <div style="padding:0 18px 12px;font-size:15px;font-weight:500;color:var(--text);">Set Budget</div>
   <div style="padding:0 18px;max-height:50vh;overflow-y:auto;">
-    <div class="add-section-lbl" style="padding:0 0 6px;">Overall monthly budget</div>
-    <input class="note-field" style="margin:0 0 16px;width:100%;text-align:left;" type="number" inputmode="decimal" min="0" placeholder="e.g. 50000" id="budget-overall-input">
-    <div class="add-section-lbl" style="padding:0 0 2px;">Per-category budgets (optional)</div>
+    <div class="add-section-lbl" style="padding:0 0 2px;">Category budgets</div>
     <div id="budget-cat-list"></div>
   </div>
-  <div style="padding:16px 18px 0;">
+  <div style="padding:14px 18px 0;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:12px;color:var(--muted);">Overall budget (sum of categories)</span>
+    <span style="font-size:15px;font-weight:500;color:var(--text);" id="budget-total-display">NT$0</span>
+  </div>
+  <div style="padding:14px 18px 0;">
     <button class="cal-confirm" onclick="saveBudget()">Save</button>
   </div>
 </div>
