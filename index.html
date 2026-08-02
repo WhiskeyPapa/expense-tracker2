@@ -228,7 +228,7 @@
 
   .cat-grid {
     display: grid; grid-template-columns: repeat(5,1fr);
-    gap: 8px; padding: 0 18px 11px;
+    gap: 8px; padding: 0 18px 4px;
   }
   .cat-btn {
     background: var(--bg3); border-radius: 12px;
@@ -509,7 +509,7 @@
 
   <div class="cat-grid" id="cat-grid"></div>
 
-  <div class="search-row" style="margin:0 18px 9px;">
+  <div class="search-row" style="margin:0 18px 2px;">
     <div class="search-bar-inner">
       <input id="note-input" type="text" placeholder="Note (optional)" maxlength="60" autocomplete="off" autocorrect="off" spellcheck="false">
     </div>
@@ -538,7 +538,7 @@
     <button class="np-btn np-action" onclick="npOperator('×')">×</button>
   </div>
 
-  <button class="add-btn" id="add-btn" onclick="addExpense()">ADD EXPENSE1</button>
+  <button class="add-btn" id="add-btn" onclick="addExpense()">ADD EXPENSE</button>
 
   <div class="divider"></div>
   <div class="pie-wrap"><canvas id="ov-pie" width="220" height="220"></canvas></div>
