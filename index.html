@@ -237,7 +237,7 @@
     color: var(--muted); border: 1.5px solid transparent;
     cursor: pointer; transition: none;
   }
-  .cat-btn i { font-size: 14px; }
+  .cat-btn i { font-size: 10px; }
   .cat-btn.sel { border-color: currentColor; }
 
   .note-field {
@@ -1326,7 +1326,8 @@ function renderTx(highlightId) {
         e.originalCurrency.toLowerCase().includes(txSearch) ||
         (e.originalAmount || '').toString().includes(txSearch)
       );
-      const recurMatch = e.recurring && (e.recurring.toLowerCase().includes(txSearch) || 'recurring'.includes(txSearch));
+      const recurTagVal = e.recurring || e.recurringTag;
+      const recurMatch = recurTagVal && (recurTagVal.toLowerCase().includes(txSearch) || 'recurring'.includes(txSearch));
       return noteMatch || amtMatch || fxMatch || recurMatch;
     });
   }
@@ -1365,7 +1366,7 @@ function renderTx(highlightId) {
             <div class="tx-name">${c.label}</div>
             ${(() => {
               const foreignSub = e.originalCurrency ? `${(e.originalAmount||0).toLocaleString()} ${e.originalCurrency}` : '';
-              const recurSub  = e.recurring ? `↻ ${e.recurring}` : '';
+              const recurSub  = (e.recurring || e.recurringTag) ? `↻ ${e.recurring || e.recurringTag}` : '';
               const parts = [e.note, foreignSub, recurSub].filter(Boolean);
               const sub = parts.join(' · ');
               return sub ? `<div class="tx-note">${sub}</div>` : '';
@@ -2021,14 +2022,18 @@ async function processRecurring() {
     const dueDate = new Date(e.nextDue);
     const next = getNextDueDate(dueDate, e.recurring).getTime();
     const payload = { amount: e.amount, category: e.category, note: e.note || '',
-      dateMs: e.nextDue, recurring: null, nextDue: null };
+      dateMs: e.nextDue, recurring: e.recurring, nextDue: next };
     if (e.originalAmount) {
       payload.originalAmount = e.originalAmount;
       payload.originalCurrency = e.originalCurrency;
       payload.exchangeRate = e.exchangeRate;
     }
     try {
-      await updateDoc(doc(db,'expenses',e.id), { nextDue: next });
+      // Demote this occurrence to a plain (inert) entry — it keeps showing the
+      // recurring tag via recurringTag, but no longer drives future generation.
+      // The newly created occurrence becomes the new live template, so deleting
+      // the most recent recurring entry cancels the series going forward.
+      await updateDoc(doc(db,'expenses',e.id), { recurring: null, recurringTag: e.recurring, nextDue: null });
       await addDoc(collection(db,'expenses'), payload);
     } catch(err) { console.error('Recurring error', err); }
   }
