@@ -1531,8 +1531,8 @@ function renderReports() {
       <div class="s-lbl">Total spent</div>
       <div class="sum-card-body"><div class="s-val">NT$${thisTotal.toLocaleString()}</div></div>
     </div>
-    <div class="sum-card">
-      <div class="s-lbl">This month's budget</div>
+    <div class="sum-card" style="cursor:pointer;border:1px solid rgba(255,255,255,0.12);" onclick="openBudgetEditor()" title="Tap to edit budget">
+      <div class="s-lbl">This month's budget <i class="ti ti-arrow-right" style="font-size:10px;vertical-align:middle;opacity:0.5;"></i></div>
       <div class="sum-card-body">${budgetConfig.overall
         ? `<div class="s-val">NT$${budgetConfig.overall.toLocaleString()}</div>
            <div style="font-size:11px;color:${thisTotal > budgetConfig.overall ? '#ff6b6b' : 'var(--muted)'};margin-top:4px;">${Math.round(thisTotal/budgetConfig.overall*100)}% spent</div>`
