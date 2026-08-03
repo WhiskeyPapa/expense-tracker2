@@ -652,7 +652,7 @@
 <!-- ══════════ FIREBASE + APP LOGIC ══════════ -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, deleteDoc, updateDoc, setDoc, doc, onSnapshot, query }
+import { getFirestore, collection, addDoc, deleteDoc, updateDoc, setDoc, doc, onSnapshot, query, where }
   from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -708,6 +708,10 @@ const CUR_MAP = Object.fromEntries(CURRENCIES.map(c=>[c.code,c]));
 
 // ── STATE ──
 let expenses   = [];
+let recentExpensesById = {};
+let olderExpensesById  = {};
+let recentLoaded = false;
+let olderLoaded  = false;
 let amtExpr    = '';
 let selectedDate = new Date();
 let selCat     = null;
@@ -1215,18 +1219,46 @@ document.addEventListener('touchstart', e => {
 
 
 
-// ── REAL-TIME LISTENER ──
-const q = query(collection(db,'expenses'));
-onSnapshot(q, snap => {
-  expenses = snap.docs.map(d => {
-    const data = d.data();
-    const date = data.dateMs ? new Date(data.dateMs) : new Date();
-    return { id: d.id, ...data, date };
-  }).sort((a,b) => b.date - a.date);
+// ── REAL-TIME LISTENER (two-phase load) ──
+// Phase 1: the last ~2 calendar months load first so the app is interactive
+// fast. Phase 2: everything older loads right after, unconditionally, in the
+// background — no user action needed to trigger it. Recurring generation
+// waits until both phases have loaded at least once, so it always sees full
+// history and never misses a dormant recurring template.
+const now0 = new Date();
+const recentCutoff = new Date(now0.getFullYear(), now0.getMonth() - 1, 1).getTime();
+
+function docToExpense(d) {
+  const data = d.data();
+  const date = data.dateMs ? new Date(data.dateMs) : new Date();
+  return { id: d.id, ...data, date };
+}
+function combineExpenses() {
+  const map = { ...recentExpensesById, ...olderExpensesById };
+  expenses = Object.values(map).sort((a,b) => b.date - a.date);
   renderOverview();
   renderTx();
   renderReports();
-  if (!recurringProcessed) { recurringProcessed = true; processRecurring(); }
+  if (recentLoaded && olderLoaded && !recurringProcessed) {
+    recurringProcessed = true;
+    processRecurring();
+  }
+}
+
+const recentQuery = query(collection(db,'expenses'), where('dateMs','>=', recentCutoff));
+onSnapshot(recentQuery, snap => {
+  recentExpensesById = {};
+  snap.docs.forEach(d => { recentExpensesById[d.id] = docToExpense(d); });
+  recentLoaded = true;
+  combineExpenses();
+});
+
+const olderQuery = query(collection(db,'expenses'), where('dateMs','<', recentCutoff));
+onSnapshot(olderQuery, snap => {
+  olderExpensesById = {};
+  snap.docs.forEach(d => { olderExpensesById[d.id] = docToExpense(d); });
+  olderLoaded = true;
+  combineExpenses();
 });
 
 // ── BUDGET LISTENER ──
